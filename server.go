@@ -4,10 +4,20 @@ import (
 	"fmt"
 	"net"
 	"os"
+
+	"github.com/panzg123/mouserpc/rpcproto"
+	"google.golang.org/protobuf/proto"
 )
 
+// DefaultRecvLen 默认收包大小
+var DefaultRecvLen = 65536
+
+type RPCHandler func(req proto.Message, rsp proto.Message) error
+
 // Server represents an RPC Server.
-type Server struct{}
+type Server struct {
+	handlers map[string]RPCHandler
+}
 
 // NewServer returns a new Server.
 func NewServer() *Server {
@@ -40,20 +50,48 @@ func (s *Server) ListenAndServer() {
 
 func (s *Server) serverPacket(conn *net.UDPConn) error {
 	for {
-		data := make([]byte, 1024)
-		n, remoteAddr, err := conn.ReadFromUDP(data)
+		data := make([]byte, DefaultRecvLen)
+		size, remoteAddr, err := conn.ReadFromUDP(data)
 		if err != nil {
 			fmt.Println("failed to read UDP msg because of ", err.Error())
-			return err
+			continue
 		}
-		fmt.Printf("n[%d] data.len[%d] remote addr[%v]", n, len(data), remoteAddr)
+		// 检查包的完整性，不完整则抛弃
+		msg, err := ReadMsg(data[0:size])
+		if err != nil {
+			fmt.Printf("ReadMsg failed, err[%v]\n", err)
+			continue
+		}
+		// 处理逻辑
+		fmt.Printf("req header[%+v]\n", msg.reqHeader)
+
+		// 写回包
+		fmt.Printf("recv size[%d] data.len[%d] remote addr[%v]\n", size, len(data), remoteAddr)
 		// 回包
-		n, err = conn.WriteToUDP(data[0:n], remoteAddr)
+		size, err = conn.WriteToUDP(data[0:size], remoteAddr)
 		if err != nil {
 			fmt.Println("write response failed, err = ", err)
 			return err
 		}
-		fmt.Println("write response success, n = ", n)
+		fmt.Println("write response success, n = ", size)
 	}
 	return nil
+}
+
+// Msg 一条完整的rpc消息
+type Msg struct {
+	reqHeader *rpcproto.RequestHeader
+	rspHeader *rpcproto.ResponseHeader
+	reqBody   proto.Message
+	rspBody   proto.Message
+}
+
+func ReadMsg(buf []byte) (*Msg, error) {
+	m := &Msg{}
+	// 判断包的完整性
+
+	// 解析出header
+
+	// 解析出body
+	return m, nil
 }
