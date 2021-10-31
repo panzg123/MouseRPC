@@ -1,0 +1,22 @@
+syntax = "proto3";
+package rpcproto;
+
+option go_package = "github.com/panzg123/MouseRPC/rpcproto";
+
+// 请求结构体
+message RequestHeader {
+  string app_name = 1;
+  string service_name = 2;
+  string interface_name = 3;
+  uint32 request_id = 4;
+}
+
+// 响应结构体
+message ResponseHeader {
+  string app_name = 1;
+  string service_name = 2;
+  string interface_name = 3;
+  uint32 request_id = 4;
+  uint32 ret = 5;
+  string msg = 6;
+}
