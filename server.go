@@ -1,6 +1,7 @@
 package mouserpc
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 // DefaultRecvLen 默认收包大小
 var DefaultRecvLen = 65536
+var FrameHeaderMagic = 0x1024
 
 type RPCHandler func(req proto.Message, rsp proto.Message) error
 
@@ -64,6 +66,15 @@ func (s *Server) serverPacket(conn *net.UDPConn) error {
 		}
 		// 处理逻辑
 		fmt.Printf("req header[%+v]\n", msg.reqHeader)
+		h, ok := s.handlers[msg.reqHeader.InterfaceName]
+		if !ok {
+			// TODO 处理失败，要回包错误
+			fmt.Printf("interface name not registed, name = %s", msg.reqHeader.InterfaceName)
+			continue
+		}
+		// TODO 这里如何确认是哪个类型呢
+
+		// TODO Encode
 
 		// 写回包
 		fmt.Printf("recv size[%d] data.len[%d] remote addr[%v]\n", size, len(data), remoteAddr)
@@ -82,16 +93,32 @@ func (s *Server) serverPacket(conn *net.UDPConn) error {
 type Msg struct {
 	reqHeader *rpcproto.RequestHeader
 	rspHeader *rpcproto.ResponseHeader
-	reqBody   proto.Message
-	rspBody   proto.Message
+	reqBody   []byte
+	rspBody   []byte
 }
 
 func ReadMsg(buf []byte) (*Msg, error) {
 	m := &Msg{}
 	// 判断包的完整性
-
+	if len(buf) < 6 {
+		return nil, fmt.Errorf("buf len invalid, len = %d", len(buf))
+	}
+	magic := binary.BigEndian.Uint16(buf[:2])
+	if magic != uint16(FrameHeaderMagic) {
+		return nil, fmt.Errorf("frame invalid, magic is %d", magic)
+	}
 	// 解析出header
-
+	headLen := binary.BigEndian.Uint32(buf[2:4])
+	totalLen := binary.BigEndian.Uint32(buf[4:6])
+	if totalLen != uint32(len(buf)) {
+		return nil, fmt.Errorf("total len invalid")
+	}
+	h := &rpcproto.RequestHeader{}
+	if err := proto.Unmarshal(buf[6:6+headLen], h); err != nil {
+		return nil, err
+	}
+	m.reqHeader = h
 	// 解析出body
+	m.reqBody = buf[6+headLen : totalLen]
 	return m, nil
 }
