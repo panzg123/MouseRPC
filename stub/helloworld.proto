@@ -1,0 +1,14 @@
+syntax = "proto3";
+package helloworld;
+
+option go_package = "github.com/panzg123/MouseRPC/helloworld";
+
+// 请求结构体
+message HelloRequest {
+  string name = 1;
+}
+
+// 响应结构体
+message HelloReply {
+  string name = 1;
+}

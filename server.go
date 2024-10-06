@@ -1,6 +1,7 @@
 package mouserpc
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -12,13 +13,20 @@ import (
 
 // DefaultRecvLen 默认收包大小
 var DefaultRecvLen = 65536
-var FrameHeaderMagic = 0x1024
+var FrameHeaderMagic uint16 = 0x1024
 
-type RPCHandler func(req proto.Message, rsp proto.Message) error
+type RPCHandler func(ctx context.Context, req []byte) (interface{}, error)
 
 // Server represents an RPC Server.
 type Server struct {
 	handlers map[string]RPCHandler
+}
+
+func (s *Server) RegisterHandler(rpcName string, h RPCHandler) {
+	if s.handlers == nil {
+		s.handlers = make(map[string]RPCHandler)
+	}
+	s.handlers[rpcName] = h
 }
 
 // NewServer returns a new Server.
@@ -64,29 +72,36 @@ func (s *Server) serverPacket(conn *net.UDPConn) error {
 			fmt.Printf("ReadMsg failed, err[%v]\n", err)
 			continue
 		}
+		// todo decode msg，传入闭包函数，解码req
 		// 处理逻辑
 		fmt.Printf("req header[%+v]\n", msg.reqHeader)
+		fmt.Printf("recv size[%d] data.len[%d] remote addr[%v]\n", size, len(data), remoteAddr)
 		h, ok := s.handlers[msg.reqHeader.InterfaceName]
 		if !ok {
 			// TODO 处理失败，要回包错误
-			fmt.Printf("interface name not registed, name = %s", msg.reqHeader.InterfaceName)
+			fmt.Printf("interface name not registed, name = %s\n", msg.reqHeader.InterfaceName)
 			continue
 		}
-		// TODO 这里如何确认是哪个类型呢
-
-		// TODO Encode
-
-		// 写回包
-		fmt.Printf("recv size[%d] data.len[%d] remote addr[%v]\n", size, len(data), remoteAddr)
+		// todo ctx控制超时等信息，此处reqBody还是[]byte类型
+		ctx := context.Background()
+		rsp, err := h(ctx, msg.reqBody)
+		// TODO Encode，此处rspBody是proto.Message类型
+		rspBody, err := proto.Marshal(rsp.(proto.Message))
+		if err != nil {
+			fmt.Printf("marshal failed, err: %v\n", err)
+			continue
+		}
+		fmt.Printf("handle msg success, rsp: %+v, err: %v\n", rsp, err)
+		// 编码回包
+		rspData := WriteMsg(msg, err, rspBody)
 		// 回包
-		size, err = conn.WriteToUDP(data[0:size], remoteAddr)
+		size, err = conn.WriteToUDP(rspData, remoteAddr)
 		if err != nil {
 			fmt.Println("write response failed, err = ", err)
 			return err
 		}
-		fmt.Println("write response success, n = ", size)
+		fmt.Printf("write response success, rspData.size: %d, write.size: %d\n", len(rspData), size)
 	}
-	return nil
 }
 
 // Msg 一条完整的rpc消息
@@ -108,9 +123,9 @@ func ReadMsg(buf []byte) (*Msg, error) {
 		return nil, fmt.Errorf("frame invalid, magic is %d", magic)
 	}
 	// 解析出header
-	headLen := binary.BigEndian.Uint32(buf[2:4])
-	totalLen := binary.BigEndian.Uint32(buf[4:6])
-	if totalLen != uint32(len(buf)) {
+	headLen := binary.BigEndian.Uint16(buf[2:4])
+	totalLen := binary.BigEndian.Uint16(buf[4:6])
+	if totalLen != uint16(len(buf)) {
 		return nil, fmt.Errorf("total len invalid")
 	}
 	h := &rpcproto.RequestHeader{}
@@ -121,4 +136,31 @@ func ReadMsg(buf []byte) (*Msg, error) {
 	// 解析出body
 	m.reqBody = buf[6+headLen : totalLen]
 	return m, nil
+}
+
+// WriteMsg 写入回包信息
+func WriteMsg(msg *Msg, err error, rspBody []byte) []byte {
+	header := &rpcproto.ResponseHeader{
+		AppName:       msg.reqHeader.AppName,
+		ServiceName:   msg.reqHeader.ServiceName,
+		InterfaceName: msg.reqHeader.InterfaceName,
+		RequestId:     msg.reqHeader.RequestId,
+		Ret:           0, // todo 错误码赋值
+		Msg:           "",
+	}
+	headerBuf, err := proto.Marshal(header)
+	if err != nil {
+		fmt.Printf("writeMsg marshal header failed, header: %+v. err: %v", header, err)
+		return nil
+	}
+	headLen := len(headerBuf)
+	rspBodyLen := len(rspBody)
+	totalLen := 6 + headLen + rspBodyLen
+	buf := make([]byte, totalLen)
+	binary.BigEndian.PutUint16(buf[:2], uint16(FrameHeaderMagic))
+	binary.BigEndian.PutUint16(buf[2:4], uint16(headLen))
+	binary.BigEndian.PutUint16(buf[4:6], uint16(totalLen))
+	copy(buf[6:6+headLen], headerBuf)
+	copy(buf[6+headLen:], rspBody)
+	return buf
 }

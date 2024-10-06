@@ -29,4 +29,8 @@ client --> filter --> encode --> transport --> decode --> filter --> server
 - [ ] stub
 - [ ] filter
 
-### step3 TODO
+### step3 服务注册与发现
+
+### step4 负载均衡
+
+### step5 支持http协议
