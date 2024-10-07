@@ -8,7 +8,7 @@
 
 frame header + rpc header + req  或者 frame header + rpc header + rsp
 
-frame固定8字节： 2 byte magic number + 2 byte rpc header len + 4 byte total header
+frame固定6字节： 2 byte magic number + 2 byte rpc header len + 2 byte total header
 
 magic number: 0x1024
 

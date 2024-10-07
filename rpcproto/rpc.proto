@@ -20,3 +20,8 @@ message ResponseHeader {
   uint32 ret = 5;
   string msg = 6;
 }
+
+// 桩代码工具还未实现
+//service Greeter {
+//  rpc SayHi (RequestHeader) returns (ResponseHeader) {}
+//}

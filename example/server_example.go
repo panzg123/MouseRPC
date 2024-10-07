@@ -14,7 +14,7 @@ type HiService struct {
 // SayHi ...
 func (h *HiService) SayHi(ctx context.Context, req *pb.HelloRequest) (*pb.HelloReply, error) {
 	rsp := &pb.HelloReply{
-		Name: req.GetName(),
+		Name: "Hi, " + req.GetName(),
 	}
 	return rsp, nil
 }
